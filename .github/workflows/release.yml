@@ -6,22 +6,49 @@ on:
       - 'v*'
 
 jobs:
-  build-windows:
+  build:
     permissions:
       contents: write
     strategy:
       fail-fast: false
       matrix:
         include:
-          # x64: MSI + NSIS installers
-          - target: x86_64-pc-windows-msvc
+          # Windows x64: MSI + NSIS installers
+          - platform: windows-latest
+            target: x86_64-pc-windows-msvc
             args: --target x86_64-pc-windows-msvc
-          # ARM64: NSIS only (WiX MSI does not support aarch64)
-          - target: aarch64-pc-windows-msvc
+          # Windows ARM64: NSIS only (WiX MSI does not support aarch64)
+          - platform: windows-latest
+            target: aarch64-pc-windows-msvc
             args: --target aarch64-pc-windows-msvc --bundles nsis
-    runs-on: windows-latest
+          # Linux x64: deb + rpm + AppImage
+          - platform: ubuntu-22.04
+            target: ''
+            args: ''
+          # macOS Intel
+          - platform: macos-13
+            target: x86_64-apple-darwin
+            args: --target x86_64-apple-darwin
+          # macOS Apple Silicon
+          - platform: macos-latest
+            target: aarch64-apple-darwin
+            args: --target aarch64-apple-darwin
+    runs-on: ${{ matrix.platform }}
     steps:
       - uses: actions/checkout@v4
+
+      - name: Install Linux dependencies
+        if: matrix.platform == 'ubuntu-22.04'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            libwebkit2gtk-4.1-dev \
+            build-essential \
+            curl wget file \
+            libxdo-dev \
+            libssl-dev \
+            libayatana-appindicator3-dev \
+            librsvg2-dev
 
       - uses: actions/setup-node@v4
         with:
@@ -35,7 +62,7 @@ jobs:
       - uses: swatinem/rust-cache@v2
         with:
           workspaces: src-tauri
-          key: ${{ matrix.target }}
+          key: ${{ matrix.platform }}-${{ matrix.target }}
 
       - name: Install frontend dependencies
         run: npm ci
@@ -47,7 +74,13 @@ jobs:
         with:
           tagName: v__VERSION__
           releaseName: 'Daily Log v__VERSION__'
-          releaseBody: 'Windows installers: x64 (MSI/NSIS) and ARM64 (NSIS).'
+          releaseBody: |
+            Downloads:
+            - **Windows x64**: MSI / NSIS setup
+            - **Windows ARM64**: NSIS setup
+            - **Linux x64**: .deb, .rpm, .AppImage
+            - **macOS Intel**: .dmg
+            - **macOS Apple Silicon**: .dmg
           releaseDraft: true
           prerelease: false
           args: ${{ matrix.args }}
